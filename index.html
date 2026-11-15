@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Monday Indoor Golf League</title>
+<style>
+:root{--bg:#f4f7f2;--card:#fff;--ink:#1c2a1f;--mute:#5d6b60;--line:#dde5da;--accent:#2f7d46;--accent-ink:#fff;--soft:#e6f1e8;--danger:#b3372f;color-scheme:light dark}
+@media (prefers-color-scheme:dark){:root{--bg:#121a14;--card:#1a251d;--ink:#e8efe8;--mute:#9aab9d;--line:#2b3a2e;--accent:#4ea868;--accent-ink:#0d1a10;--soft:#223427;--danger:#e87d75}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:680px;margin:0 auto;padding:20px 16px 48px}
+header{text-align:center;padding:12px 0 8px}
+header .flag{font-size:40px;line-height:1}
+h1{margin:6px 0 4px;font-size:1.7rem;font-family:Georgia,"Times New Roman",serif}
+.sub{color:var(--mute);margin:0}
+.details{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:14px 0 0}
+.pill{background:var(--soft);border-radius:999px;padding:4px 12px;font-size:.9rem}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-top:18px}
+h2{margin:0 0 12px;font-size:1.1rem}
+label{display:block;font-size:.88rem;color:var(--mute);margin:12px 0 4px}
+input{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink);font:inherit}
+input:focus{outline:2px solid var(--accent);outline-offset:1px}
+button{font:inherit;border:0;border-radius:10px;padding:10px 16px;cursor:pointer;background:var(--accent);color:var(--accent-ink);font-weight:600}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:500}
+button.danger{background:transparent;color:var(--danger);border:1px solid var(--line);font-weight:500;padding:4px 10px;font-size:.85rem}
+button.link{background:none;border:0;color:var(--mute);text-decoration:underline;font-weight:400;padding:4px}
+button:disabled{opacity:.6;cursor:default}
+.row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.msg{margin-top:10px;font-size:.9rem;color:var(--mute)}
+.msg.err{color:var(--danger)}
+.in{background:var(--soft);border-radius:10px;padding:12px;margin-bottom:4px}
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.chip{flex:none;background:var(--bg);color:var(--ink);border:1px solid var(--line);font-weight:500;padding:8px 12px;border-radius:12px;text-align:center;line-height:1.25}
+.chip small{display:block;color:var(--mute);font-size:.78rem}
+.chip.sel{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.chip.sel small{color:var(--accent-ink);opacity:.85}
+.roster{list-style:none;margin:0;padding:0}
+.roster li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.roster li:first-child{border-top:0}
+.num{width:26px;height:26px;border-radius:50%;background:var(--soft);display:flex;align-items:center;justify-content:center;font-size:.8rem;flex:none}
+.who{flex:1;min-width:0;overflow-wrap:anywhere;font-weight:600}
+.tag{font-size:.78rem;color:var(--mute);border:1px solid var(--line);border-radius:999px;padding:1px 8px;white-space:nowrap;font-weight:400}
+.empty{color:var(--mute);margin:0}
+.all{margin:0;padding:0;list-style:none}
+.all li{padding:10px 0;border-top:1px solid var(--line)}
+.all li:first-child{border-top:0}
+.all b{display:block}
+.all span{color:var(--mute);font-size:.92rem;overflow-wrap:anywhere}
+.hidden{display:none}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+footer{text-align:center;margin-top:24px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <div class="flag">⛳</div>
+  <h1 id="title"></h1>
+  <p class="sub" id="blurb"></p>
+  <div class="details" id="details"></div>
+</header>
+
+<div id="setup" class="card hidden">
+  <h2>Almost there</h2>
+  <p>This page isn’t connected to its database yet. Open <code>index.html</code> and paste your Supabase project URL and key into the <code>CONFIG</code> section near the top of the script. The README walks through it.</p>
+</div>
+
+<div id="app" class="hidden">
+  <section class="card">
+    <h2>Pick a date</h2>
+    <div class="chips" id="chips"></div>
+  </section>
+
+  <section class="card">
+    <h2 id="formTitle">Sign up</h2>
+    <label for="name">Your name</label>
+    <input id="name" maxlength="60" autocomplete="name">
+    <div class="row">
+      <button id="save">Sign me up</button>
+      <button id="all" class="ghost">Sign up for all dates</button>
+    </div>
+    <div id="formMsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="card">
+    <div class="top">
+      <h2 style="margin:0"><span id="rosterTitle">Roster</span> <span id="count" class="tag">0</span></h2>
+      <button class="ghost" id="copy">Copy list</button>
+    </div>
+    <ul id="roster" class="roster" style="margin-top:8px"></ul>
+    <p id="empty" class="empty" style="margin-top:8px">No one has signed up for this date yet. Be the first!</p>
+    <div id="rosterMsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="card">
+    <h2>All dates at a glance</h2>
+    <ul id="allList" class="all"></ul>
+  </section>
+
+  <footer>
+    <button class="link" id="orgToggle">Organizer login</button>
+    <div id="orgOut" class="hidden">
+      <span class="tag">Organizer mode: you can remove players</span>
+      <button class="link" id="signOut">Sign out</button>
+    </div>
+    <div id="orgForm" class="card hidden" style="text-align:left">
+      <label for="oEmail">Organizer email</label>
+      <input id="oEmail" type="email" autocomplete="username">
+      <label for="oPass">Password</label>
+      <input id="oPass" type="password" autocomplete="current-password">
+      <div class="row"><button id="signIn">Sign in</button></div>
+      <div id="orgMsg" class="msg" role="status"></div>
+    </div>
+  </footer>
+</div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ===== Edit these ===== */
+var CONFIG = {
+  SUPABASE_URL: "YOUR_SUPABASE_URL",
+  SUPABASE_KEY: "YOUR_SUPABASE_ANON_OR_PUBLISHABLE_KEY"
+};
+var LEAGUE = {
+  title: "Monday Indoor Golf League",
+  blurb: "Pick a Monday, add your name, and see who else is playing.",
+  when: "Every Monday",   // for example "Mondays at 6 PM"
+  where: "",              // for example "Bunker Hill"
+  fee: ""                 // for example "$20 per night"
+};
+var WEEKS = 10; // how many upcoming Mondays to show
+/* ====================== */
+
+(function(){
+var $=function(id){return document.getElementById(id)};
+function show(el,on){el.classList.toggle("hidden",!on)}
+
+/* header */
+$("title").textContent=LEAGUE.title;document.title=LEAGUE.title;
+$("blurb").textContent=LEAGUE.blurb;
+[["🗓 ",LEAGUE.when],["📍 ",LEAGUE.where],["💵 ",LEAGUE.fee]].forEach(function(p){
+  if(!p[1])return;var s=document.createElement("span");s.className="pill";s.textContent=p[0]+p[1];$("details").appendChild(s);
+});
+
+var configured=CONFIG.SUPABASE_URL.indexOf("http")===0&&CONFIG.SUPABASE_KEY.indexOf("YOUR_")!==0&&window.supabase;
+if(!configured){show($("setup"),true);return}
+show($("app"),true);
+var sb=window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_KEY);
+
+/* dates */
+function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function mondays(n){
+  var d=new Date();d.setHours(12,0,0,0);
+  while(d.getDay()!==1)d.setDate(d.getDate()+1);
+  var out=[];for(var i=0;i<n;i++){out.push(iso(d));d.setDate(d.getDate()+7)}
+  return out;
+}
+function when(s,long){
+  var p=s.split("-"),d=new Date(+p[0],+p[1]-1,+p[2]);
+  return d.toLocaleDateString(undefined,long?{weekday:"long",month:"long",day:"numeric"}:{month:"short",day:"numeric"});
+}
+var DATES=mondays(WEEKS),sel=DATES[0],rows=[],mine={},isOrganizer=false;
+
+function norm(s){return String(s||"").trim().toLowerCase()}
+function myName(){try{return localStorage.getItem("golf-name")||""}catch(e){return ""}}
+function rememberName(n){try{localStorage.setItem("golf-name",n)}catch(e){}}
+function playersFor(d){return rows.filter(function(r){return r.play_date===d})}
+function hasMe(d){return playersFor(d).some(function(r){return mine[r.id]})}
+var _tok=null;
+function token(){
+  if(_tok)return _tok;
+  try{_tok=localStorage.getItem("golf-token")||""}catch(e){_tok=""}
+  if(!_tok){
+    _tok=(window.crypto&&crypto.randomUUID)?crypto.randomUUID():(Date.now()+"-"+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
+    try{localStorage.setItem("golf-token",_tok)}catch(e){}
+  }
+  return _tok;
+}
+
+function render(){
+  var c=$("chips");c.textContent="";
+  DATES.forEach(function(d){
+    var b=document.createElement("button");
+    b.className="chip"+(d===sel?" sel":"");
+    b.textContent=when(d,false)+(hasMe(d)?" ✓":"");
+    var s=document.createElement("small");s.textContent=playersFor(d).length+" playing";
+    b.appendChild(s);
+    b.onclick=function(){sel=d;$("formMsg").textContent="";$("rosterMsg").textContent="";render()};
+    c.appendChild(b);
+  });
+  $("formTitle").textContent="Sign up for "+when(sel,true);
+  $("rosterTitle").textContent=when(sel,true);
+  var players=playersFor(sel);
+  $("count").textContent=players.length;
+  var ul=$("roster");ul.textContent="";
+  players.forEach(function(r,i){
+    var li=document.createElement("li");
+    var n=document.createElement("span");n.className="num";n.textContent=i+1;
+    var w=document.createElement("div");w.className="who";w.textContent=r.name+(mine[r.id]?" (you)":"");
+    li.appendChild(n);li.appendChild(w);
+    if(isOrganizer){
+      var x=document.createElement("button");x.className="danger";x.textContent="Remove";
+      x.onclick=function(){removeRow(r)};li.appendChild(x);
+    }else if(mine[r.id]){
+      var y=document.createElement("button");y.className="danger";y.textContent="Withdraw";
+      y.onclick=function(){withdrawRow(r)};li.appendChild(y);
+    }
+    ul.appendChild(li);
+  });
+  show($("empty"),players.length===0);
+  var al=$("allList");al.textContent="";
+  DATES.forEach(function(d){
+    var li=document.createElement("li");
+    var b=document.createElement("b");b.textContent=when(d,true)+" ("+playersFor(d).length+")";
+    var sp=document.createElement("span");
+    var names=playersFor(d).map(function(r){return r.name});
+    sp.textContent=names.length?names.join(", "):"No one yet";
+    li.appendChild(b);li.appendChild(sp);al.appendChild(li);
+  });
+  show($("orgToggle"),!isOrganizer);
+  show($("orgOut"),isOrganizer);
+  if(isOrganizer)show($("orgForm"),false);
+}
+
+async function load(){
+  var res=await sb.from("signups").select("id,play_date,name,created_at")
+    .gte("play_date",DATES[0]).lte("play_date",DATES[DATES.length-1]).order("created_at");
+  if(res.error){$("rosterMsg").className="msg err";$("rosterMsg").textContent="Couldn’t load the roster. Check your connection and refresh.";return}
+  rows=res.data||[];
+  var ids=await sb.rpc("my_signup_ids",{p_token:token()});
+  mine={};
+  if(!ids.error&&Array.isArray(ids.data))ids.data.forEach(function(x){mine[x]=true});
+  render();
+}
+
+async function signUp(dates){
+  var name=$("name").value.trim().replace(/\s+/g," ");
+  var msg=$("formMsg");msg.className="msg";msg.textContent="";
+  if(!name){msg.className="msg err";msg.textContent="Please enter your name.";return}
+  var missing=dates.filter(function(d){return !playersFor(d).some(function(r){return norm(r.name)===norm(name)})});
+  if(!missing.length){msg.textContent="You’re already on "+(dates.length>1?"every date":when(dates[0],true))+".";return}
+  $("save").disabled=true;$("all").disabled=true;
+  var res=await sb.from("signups").insert(missing.map(function(d){return {play_date:d,name:name,owner_token:token()}}));
+  $("save").disabled=false;$("all").disabled=false;
+  if(res.error){
+    msg.className="msg err";
+    msg.textContent=res.error.code==="23505"?"That name is already on the list for one of those dates.":"Couldn’t sign you up. Please try again.";
+    await load();return;
+  }
+  rememberName(name);
+  msg.textContent=missing.length>1?"You’re in for "+missing.length+" dates!":"You’re in for "+when(missing[0],true)+"!";
+  await load();
+}
+
+async function removeRow(r){
+  if(!confirm("Remove "+r.name+" from "+when(r.play_date,true)+"?"))return;
+  var res=await sb.from("signups").delete().eq("id",r.id).select("id");
+  if(res.error||!res.data||!res.data.length){
+    $("rosterMsg").className="msg err";
+    $("rosterMsg").textContent="Couldn’t remove that player. Make sure you’re signed in as the organizer.";
+    return;
+  }
+  await load();
+}
+
+async function withdrawRow(r){
+  if(!confirm("Withdraw from "+when(r.play_date,true)+"?"))return;
+  var res=await sb.rpc("withdraw",{p_id:r.id,p_token:token()});
+  if(res.error||res.data!==true){
+    $("rosterMsg").className="msg err";
+    $("rosterMsg").textContent="Couldn’t withdraw you. If you signed up on a different phone or browser, ask the organizer to remove you.";
+    return;
+  }
+  $("rosterMsg").className="msg";
+  $("rosterMsg").textContent="You’ve been removed from "+when(r.play_date,true)+".";
+  await load();
+}
+
+$("name").value=myName();
+$("save").onclick=function(){signUp([sel])};
+$("all").onclick=function(){signUp(DATES)};
+$("copy").onclick=async function(){
+  var names=playersFor(sel).map(function(r,i){return (i+1)+". "+r.name});
+  var text=when(sel,true)+" ("+names.length+" playing)\n"+(names.join("\n")||"No one yet");
+  try{await navigator.clipboard.writeText(text);$("rosterMsg").className="msg";$("rosterMsg").textContent="Copied!"}
+  catch(e){$("rosterMsg").className="msg err";$("rosterMsg").textContent="Couldn’t copy. Select the names and copy them manually."}
+};
+
+/* organizer */
+$("orgToggle").onclick=function(){show($("orgForm"),$("orgForm").classList.contains("hidden"))};
+$("signIn").onclick=async function(){
+  var m=$("orgMsg");m.className="msg";m.textContent="";
+  var res=await sb.auth.signInWithPassword({email:$("oEmail").value.trim(),password:$("oPass").value});
+  if(res.error){m.className="msg err";m.textContent="That email or password didn’t work.";return}
+  $("oPass").value="";
+};
+$("signOut").onclick=function(){sb.auth.signOut()};
+sb.auth.onAuthStateChange(function(_e,session){isOrganizer=!!session;render()});
+
+load();
+setInterval(load,30000);
+document.addEventListener("visibilitychange",function(){if(!document.hidden)load()});
+render();
+})();
+</script>
+</body>
+</html>
