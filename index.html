@@ -103,6 +103,15 @@ footer{text-align:center;margin-top:24px}
     <ul id="allList" class="all"></ul>
   </section>
 
+  <section class="card hidden" id="datesCard">
+    <h2>Organizer: manage dates</h2>
+    <label for="newDate">Add a Monday</label>
+    <input id="newDate" type="date">
+    <div class="row"><button id="addDate">Add date</button></div>
+    <ul id="dateList" class="roster" style="margin-top:12px"></ul>
+    <div id="dateMsg" class="msg" role="status"></div>
+  </section>
+
   <footer>
     <button class="link" id="orgToggle">Organizer login</button>
     <div id="orgOut" class="hidden">
@@ -135,7 +144,6 @@ var LEAGUE = {
   where: "",              // for example "Fairway Indoor Golf, 123 Main St"
   fee: ""                 // for example "$15 per night"
 };
-var WEEKS = 10; // how many upcoming Mondays to show
 /* ====================== */
 
 (function(){
@@ -156,17 +164,11 @@ var sb=window.supabase.createClient(CONFIG.SUPABASE_URL,CONFIG.SUPABASE_KEY);
 
 /* dates */
 function iso(d){return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
-function mondays(n){
-  var d=new Date();d.setHours(12,0,0,0);
-  while(d.getDay()!==1)d.setDate(d.getDate()+1);
-  var out=[];for(var i=0;i<n;i++){out.push(iso(d));d.setDate(d.getDate()+7)}
-  return out;
-}
 function when(s,long){
   var p=s.split("-"),d=new Date(+p[0],+p[1]-1,+p[2]);
   return d.toLocaleDateString(undefined,long?{weekday:"long",month:"long",day:"numeric"}:{month:"short",day:"numeric"});
 }
-var DATES=mondays(WEEKS),sel=DATES[0],rows=[],mine={},isOrganizer=false;
+var DATES=[],sel=null,rows=[],mine={},isOrganizer=false,datesLoaded=false;
 
 function norm(s){return String(s||"").trim().toLowerCase()}
 function myName(){try{return localStorage.getItem("golf-name")||""}catch(e){return ""}}
@@ -198,9 +200,14 @@ function render(){
     b.onclick=function(){sel=d;$("formMsg").textContent="";$("rosterMsg").textContent="";render()};
     c.appendChild(b);
   });
-  $("formTitle").textContent="Sign up for "+when(sel,true);
-  $("rosterTitle").textContent=when(sel,true);
-  var players=playersFor(sel);
+  if(datesLoaded&&!DATES.length){
+    var none=document.createElement("p");none.className="empty";
+    none.textContent="No dates have been scheduled yet. Check back soon.";
+    c.appendChild(none);
+  }
+  $("formTitle").textContent=sel?"Sign up for "+when(sel,true):"Sign up";
+  $("rosterTitle").textContent=sel?when(sel,true):"Roster";
+  var players=sel?playersFor(sel):[];
   $("count").textContent=players.length;
   var ul=$("roster");ul.textContent="";
   players.forEach(function(r,i){
@@ -217,7 +224,7 @@ function render(){
     }
     ul.appendChild(li);
   });
-  show($("empty"),players.length===0);
+  show($("empty"),!!sel&&players.length===0);
   var al=$("allList");al.textContent="";
   DATES.forEach(function(d){
     var li=document.createElement("li");
@@ -230,9 +237,28 @@ function render(){
   show($("orgToggle"),!isOrganizer);
   show($("orgOut"),isOrganizer);
   if(isOrganizer)show($("orgForm"),false);
+  show($("datesCard"),isOrganizer);
+  var dl=$("dateList");dl.textContent="";
+  if(isOrganizer){
+    DATES.forEach(function(d,i){
+      var li=document.createElement("li");
+      var n=document.createElement("span");n.className="num";n.textContent=i+1;
+      var w=document.createElement("div");w.className="who";
+      w.textContent=when(d,true)+" ("+playersFor(d).length+" playing)";
+      var x=document.createElement("button");x.className="danger";x.textContent="Remove";
+      x.onclick=function(){removeDate(d)};
+      li.appendChild(n);li.appendChild(w);li.appendChild(x);dl.appendChild(li);
+    });
+  }
 }
 
 async function load(){
+  var dr=await sb.from("league_dates").select("play_date").gte("play_date",iso(new Date())).order("play_date");
+  if(dr.error){$("rosterMsg").className="msg err";$("rosterMsg").textContent="Couldn’t load the dates. Check your connection and refresh.";return}
+  DATES=(dr.data||[]).map(function(x){return x.play_date});
+  datesLoaded=true;
+  if(DATES.indexOf(sel)<0)sel=DATES[0]||null;
+  if(!DATES.length){rows=[];mine={};render();return}
   var res=await sb.from("signups").select("id,play_date,name,created_at")
     .gte("play_date",DATES[0]).lte("play_date",DATES[DATES.length-1]).order("created_at");
   if(res.error){$("rosterMsg").className="msg err";$("rosterMsg").textContent="Couldn’t load the roster. Check your connection and refresh.";return}
@@ -294,11 +320,44 @@ async function withdrawRow(r){
   await load();
 }
 
+async function addDate(){
+  var m=$("dateMsg");m.className="msg err";m.textContent="";
+  var v=$("newDate").value;
+  if(!v){m.textContent="Pick a date first.";return}
+  var p=v.split("-"),d=new Date(+p[0],+p[1]-1,+p[2]);
+  if(d.getDay()!==1){m.textContent="That isn’t a Monday. Please pick a Monday.";return}
+  if(v<iso(new Date())){m.textContent="That date has already passed.";return}
+  var res=await sb.from("league_dates").insert({play_date:v});
+  if(res.error){
+    m.textContent=res.error.code==="23505"?"That date is already on the list.":"Couldn’t add that date. Make sure you’re signed in as the organizer.";
+    return;
+  }
+  $("newDate").value="";
+  m.className="msg";m.textContent="Added "+when(v,true)+".";
+  await load();
+}
+
+async function removeDate(d){
+  var n=playersFor(d).length;
+  var warn=n?" The "+n+(n===1?" signup":" signups")+" for that date will be deleted too.":"";
+  if(!confirm("Remove "+when(d,true)+"?"+warn))return;
+  var m=$("dateMsg");
+  var res=await sb.from("league_dates").delete().eq("play_date",d).select("play_date");
+  if(res.error||!res.data||!res.data.length){
+    m.className="msg err";m.textContent="Couldn’t remove that date. Make sure you’re signed in as the organizer.";
+    return;
+  }
+  m.className="msg";m.textContent="Removed "+when(d,true)+".";
+  await load();
+}
+
 $("name").value=myName();
 show($("pwWrap"),!savedPw());
-$("save").onclick=function(){signUp([sel])};
-$("all").onclick=function(){signUp(DATES)};
+$("save").onclick=function(){if(sel)signUp([sel])};
+$("all").onclick=function(){if(DATES.length)signUp(DATES)};
+$("addDate").onclick=addDate;
 $("copy").onclick=async function(){
+  if(!sel)return;
   var names=playersFor(sel).map(function(r,i){return (i+1)+". "+r.name});
   var text=when(sel,true)+" ("+names.length+" playing)\n"+(names.join("\n")||"No one yet");
   try{await navigator.clipboard.writeText(text);$("rosterMsg").className="msg";$("rosterMsg").textContent="Copied!"}
