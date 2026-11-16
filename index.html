@@ -76,6 +76,11 @@ footer{text-align:center;margin-top:24px}
     <h2 id="formTitle">Sign up</h2>
     <label for="name">Your name</label>
     <input id="name" maxlength="60" autocomplete="name">
+    <div id="pwWrap">
+      <label for="pw">League password</label>
+      <input id="pw" type="password" autocomplete="off">
+      <div class="msg">Ask the organizer if you don’t have it.</div>
+    </div>
     <div class="row">
       <button id="save">Sign me up</button>
       <button id="all" class="ghost">Sign up for all dates</button>
@@ -166,6 +171,9 @@ var DATES=mondays(WEEKS),sel=DATES[0],rows=[],mine={},isOrganizer=false;
 function norm(s){return String(s||"").trim().toLowerCase()}
 function myName(){try{return localStorage.getItem("golf-name")||""}catch(e){return ""}}
 function rememberName(n){try{localStorage.setItem("golf-name",n)}catch(e){}}
+function savedPw(){try{return localStorage.getItem("golf-pw")||""}catch(e){return ""}}
+function rememberPw(p){try{localStorage.setItem("golf-pw",p)}catch(e){}}
+function forgetPw(){try{localStorage.removeItem("golf-pw")}catch(e){}}
 function playersFor(d){return rows.filter(function(r){return r.play_date===d})}
 function hasMe(d){return playersFor(d).some(function(r){return mine[r.id]})}
 var _tok=null;
@@ -241,14 +249,22 @@ async function signUp(dates){
   if(!name){msg.className="msg err";msg.textContent="Please enter your name.";return}
   var missing=dates.filter(function(d){return !playersFor(d).some(function(r){return norm(r.name)===norm(name)})});
   if(!missing.length){msg.textContent="You’re already on "+(dates.length>1?"every date":when(dates[0],true))+".";return}
+  var pw=$("pw").value.trim()||savedPw();
+  if(!pw){msg.className="msg err";msg.textContent="Please enter the league password.";show($("pwWrap"),true);return}
   $("save").disabled=true;$("all").disabled=true;
-  var res=await sb.from("signups").insert(missing.map(function(d){return {play_date:d,name:name,owner_token:token()}}));
+  var res=await sb.rpc("join_league",{p_dates:missing,p_name:name,p_token:token(),p_password:pw});
   $("save").disabled=false;$("all").disabled=false;
   if(res.error){
     msg.className="msg err";
-    msg.textContent=res.error.code==="23505"?"That name is already on the list for one of those dates.":"Couldn’t sign you up. Please try again.";
+    if((res.error.message||"").indexOf("wrong_password")>-1){
+      forgetPw();$("pw").value="";show($("pwWrap"),true);
+      msg.textContent="That league password isn’t right. Check with the organizer.";
+    }else{
+      msg.textContent="Couldn’t sign you up. Please try again.";
+    }
     await load();return;
   }
+  rememberPw(pw);show($("pwWrap"),false);
   rememberName(name);
   msg.textContent=missing.length>1?"You’re in for "+missing.length+" dates!":"You’re in for "+when(missing[0],true)+"!";
   await load();
@@ -279,6 +295,7 @@ async function withdrawRow(r){
 }
 
 $("name").value=myName();
+show($("pwWrap"),!savedPw());
 $("save").onclick=function(){signUp([sel])};
 $("all").onclick=function(){signUp(DATES)};
 $("copy").onclick=async function(){
