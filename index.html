@@ -49,6 +49,11 @@ button:disabled{opacity:.6;cursor:default}
 .all span{color:var(--mute);font-size:.92rem;overflow-wrap:anywhere}
 .hidden{display:none}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.top button{white-space:nowrap;flex:none}
+.team{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin-top:10px;background:var(--bg)}
+.team b{display:block;margin-bottom:4px}
+.team div{padding:2px 0;overflow-wrap:anywhere}
+#teamsBody p{margin:0}
 footer{text-align:center;margin-top:24px}
 </style>
 </head>
@@ -96,6 +101,11 @@ footer{text-align:center;margin-top:24px}
     <ul id="roster" class="roster" style="margin-top:8px"></ul>
     <p id="empty" class="empty" style="margin-top:8px">No one has signed up for this date yet. Be the first!</p>
     <div id="rosterMsg" class="msg" role="status"></div>
+  </section>
+
+  <section class="card hidden" id="teamsCard">
+    <h2>Teams</h2>
+    <div id="teamsBody"></div>
   </section>
 
   <section class="card">
@@ -168,7 +178,21 @@ function when(s,long){
   var p=s.split("-"),d=new Date(+p[0],+p[1]-1,+p[2]);
   return d.toLocaleDateString(undefined,long?{weekday:"long",month:"long",day:"numeric"}:{month:"short",day:"numeric"});
 }
-var DATES=[],sel=null,rows=[],mine={},isOrganizer=false,datesLoaded=false;
+var DATES=[],sel=null,rows=[],mine={},isOrganizer=false,datesLoaded=false,cutoffs={},teams={};
+
+/* The draw: signups close and teams are drawn one hour before play.
+   The database enforces this; the page only reflects it. */
+function isOpen(d){var c=cutoffs[d];return !c||new Date()<c.at}
+function cutoffLabel(d){
+  var c=cutoffs[d];if(!c)return "";
+  try{return c.at.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",timeZoneName:"short",timeZone:c.tz})}
+  catch(e){return c.at.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"})}
+}
+async function loadTeamsFor(d){
+  if(!d||isOpen(d))return;
+  var tr=await sb.rpc("get_teams",{p_date:d});
+  if(!tr.error&&Array.isArray(tr.data))teams[d]=tr.data;
+}
 
 function norm(s){return String(s||"").trim().toLowerCase()}
 function myName(){try{return localStorage.getItem("golf-name")||""}catch(e){return ""}}
@@ -197,7 +221,7 @@ function render(){
     b.textContent=when(d,false)+(hasMe(d)?" ✓":"");
     var s=document.createElement("small");s.textContent=playersFor(d).length+" playing";
     b.appendChild(s);
-    b.onclick=function(){sel=d;$("formMsg").textContent="";$("rosterMsg").textContent="";render()};
+    b.onclick=function(){sel=d;$("formMsg").textContent="";$("rosterMsg").textContent="";render();loadTeamsFor(d).then(render)};
     c.appendChild(b);
   });
   if(datesLoaded&&!DATES.length){
@@ -218,13 +242,48 @@ function render(){
     if(isOrganizer){
       var x=document.createElement("button");x.className="danger";x.textContent="Remove";
       x.onclick=function(){removeRow(r)};li.appendChild(x);
-    }else if(mine[r.id]){
+    }else if(mine[r.id]&&isOpen(r.play_date)){
       var y=document.createElement("button");y.className="danger";y.textContent="Withdraw";
       y.onclick=function(){withdrawRow(r)};li.appendChild(y);
     }
     ul.appendChild(li);
   });
   show($("empty"),!!sel&&players.length===0);
+
+  /* teams / blind draw */
+  var closed=!!sel&&!isOpen(sel);
+  show($("teamsCard"),!!sel&&!!cutoffs[sel]);
+  var tb=$("teamsBody");tb.textContent="";
+  if(sel&&cutoffs[sel]){
+    if(!closed){
+      var p1=document.createElement("p");
+      p1.textContent="🎲 Blind draw: teams are picked at random and revealed at "+cutoffLabel(sel)+", one hour before play. Signups close then too.";
+      tb.appendChild(p1);
+    }else{
+      var tl=teams[sel]||[];
+      if(!tl.length){
+        var p2=document.createElement("p");
+        p2.textContent=players.length?"Drawing teams…":"No one signed up for this date, so there are no teams.";
+        tb.appendChild(p2);
+      }else{
+        var groups={},order=[];
+        tl.forEach(function(t){if(!groups[t.team_no]){groups[t.team_no]=[];order.push(t.team_no)}groups[t.team_no].push(t.name)});
+        order.forEach(function(no){
+          var box=document.createElement("div");box.className="team";
+          var h=document.createElement("b");h.textContent="Team "+no;box.appendChild(h);
+          groups[no].forEach(function(nm){var line=document.createElement("div");line.textContent=nm;box.appendChild(line)});
+          tb.appendChild(box);
+        });
+      }
+    }
+  }
+  var anyOpen=DATES.some(isOpen);
+  $("save").disabled=closed;
+  $("all").disabled=!anyOpen;
+  if(closed){
+    $("formMsg").className="msg";
+    $("formMsg").textContent="Signups for this date are closed. Teams were drawn at "+cutoffLabel(sel)+".";
+  }
   var al=$("allList");al.textContent="";
   DATES.forEach(function(d){
     var li=document.createElement("li");
@@ -258,6 +317,9 @@ async function load(){
   DATES=(dr.data||[]).map(function(x){return x.play_date});
   datesLoaded=true;
   if(DATES.indexOf(sel)<0)sel=DATES[0]||null;
+  var cr=await sb.rpc("get_cutoffs");
+  cutoffs={};
+  if(!cr.error&&Array.isArray(cr.data))cr.data.forEach(function(x){cutoffs[x.play_date]={at:new Date(x.cutoff),tz:x.tz||"America/New_York"}});
   if(!DATES.length){rows=[];mine={};render();return}
   var res=await sb.from("signups").select("id,play_date,name,created_at")
     .gte("play_date",DATES[0]).lte("play_date",DATES[DATES.length-1]).order("created_at");
@@ -266,6 +328,7 @@ async function load(){
   var ids=await sb.rpc("my_signup_ids",{p_token:token()});
   mine={};
   if(!ids.error&&Array.isArray(ids.data))ids.data.forEach(function(x){mine[x]=true});
+  await loadTeamsFor(sel);
   render();
 }
 
@@ -273,6 +336,8 @@ async function signUp(dates){
   var name=$("name").value.trim().replace(/\s+/g," ");
   var msg=$("formMsg");msg.className="msg";msg.textContent="";
   if(!name){msg.className="msg err";msg.textContent="Please enter your name.";return}
+  dates=dates.filter(isOpen);
+  if(!dates.length){msg.className="msg err";msg.textContent="Signups for this date are closed. Teams are drawn an hour before play.";return}
   var missing=dates.filter(function(d){return !playersFor(d).some(function(r){return norm(r.name)===norm(name)})});
   if(!missing.length){msg.textContent="You’re already on "+(dates.length>1?"every date":when(dates[0],true))+".";return}
   var pw=$("pw").value.trim()||savedPw();
@@ -288,6 +353,11 @@ async function signUp(dates){
     }else{
       msg.textContent="Couldn’t sign you up. Please try again.";
     }
+    await load();return;
+  }
+  if(res.data===0){
+    msg.className="msg err";
+    msg.textContent="Signups for that date just closed, so you weren’t added.";
     await load();return;
   }
   rememberPw(pw);show($("pwWrap"),false);
@@ -312,7 +382,7 @@ async function withdrawRow(r){
   var res=await sb.rpc("withdraw",{p_id:r.id,p_token:token()});
   if(res.error||res.data!==true){
     $("rosterMsg").className="msg err";
-    $("rosterMsg").textContent="Couldn’t withdraw you. If you signed up on a different phone or browser, ask the organizer to remove you.";
+    $("rosterMsg").textContent="Couldn’t withdraw you. If the teams were already drawn, or you signed up on a different phone or browser, ask the organizer to remove you.";
     return;
   }
   $("rosterMsg").className="msg";
